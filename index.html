@@ -60,6 +60,15 @@
   .alt .altbet{font-size:12.5px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .alt .altrate{font-size:12px;font-weight:700;margin-left:auto;white-space:nowrap}
 
+  /* fases de acerto (na hora / até G1 / até G2) */
+  .stages{display:flex;gap:6px;margin:10px 0}
+  .stg{flex:1;background:#0a0f15;border:1px solid var(--line);border-radius:9px;padding:7px 4px;text-align:center}
+  .stg span{display:block;font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+  .stg b{font-size:16px;font-weight:800}
+  .stages.small{margin:8px 0 0}
+  .stages.small .stg{padding:6px 3px}
+  .stages.small b{font-size:14px}
+
   /* ===== ÚLTIMOS ===== */
   .line{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
   .line .chip{min-width:38px;height:38px;font-size:15px}
@@ -85,8 +94,10 @@
     padding:9px;border-radius:9px;font-size:14px;text-align:center}
 
   /* ===== PLACAR ===== */
-  .srow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .srow{padding:11px 0;border-bottom:1px solid var(--line)}
   .srow:last-child{border-bottom:none}
+  .shead{display:flex;align-items:center;gap:10px}
+  .stot{margin-left:auto;font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}
   .sw{position:relative;width:38px;height:22px;flex:0 0 auto;cursor:pointer}
   .sw input{display:none}
   .sw .track{position:absolute;inset:0;background:#2a3744;border-radius:20px;transition:.15s}
@@ -277,10 +288,15 @@ function render(){
   if(!last.length)l.innerHTML='<span class="empty">Nenhum número ainda.</span>';
   else last.forEach((n,i)=>{const c=chip(n);if(i===last.length-1)c.classList.add('latest');l.appendChild(c);});
 
-  // hits atuais, ranqueados por taxa histórica
+  // hits atuais — calcula % acumulada: na hora / até G1 / até G2. Ranqueia pela melhor (G2).
   let hits=detectEn(history);
-  hits.forEach(h=>{const s=st[h.s];h.rate=s.tot?s.hit/s.tot:null;h.tot=s.tot;h.hit=s.hit;});
-  hits.sort((a,b)=>(b.rate??-1)-(a.rate??-1));
+  hits.forEach(h=>{const s=st[h.s];
+    h.tot=s.tot;h.hit=s.hit;
+    h.pE =s.tot?s.e/s.tot:null;                 // acerto na entrada (na hora)
+    h.pG1=s.tot?(s.e+s.g1)/s.tot:null;          // acumulado até gale 1
+    h.pG2=s.tot?(s.e+s.g1+s.g2)/s.tot:null;     // acumulado até gale 2
+  });
+  hits.sort((a,b)=>((b.pG2??-1)-(a.pG2??-1))||((b.pG1??-1)-(a.pG1??-1))||((b.pE??-1)-(a.pE??-1)));
 
   // hero — mostra só a MELHOR (maior % em 2 gales); outras ficam como alternativa
   const hero=document.getElementById('hero');
@@ -290,20 +306,26 @@ function render(){
     hero.innerHTML='<div class="hero-idle"><b>Sem entrada</b>Aguarde o padrão bater.</div>';
   }else{
     const best=hits[0]; best.nums.forEach(x=>lit.add(x)); // só a melhor acende na mesa
-    const rtxt=best.rate==null?'sem histórico':`${Math.round(best.rate*100)}% em 2 gales${best.tot?` · ${best.hit}/${best.tot}`:''}`;
+    const pc3=(p)=>p==null?'—':Math.round(p*100)+'%';
+    const stages=(h)=>`<div class="stages">`
+      +`<div class="stg"><span>na hora</span><b style="color:${rcol(h.pE)}">${pc3(h.pE)}</b></div>`
+      +`<div class="stg"><span>até G1</span><b style="color:${rcol(h.pG1)}">${pc3(h.pG1)}</b></div>`
+      +`<div class="stg"><span>até G2</span><b style="color:${rcol(h.pG2)}">${pc3(h.pG2)}</b></div></div>`;
     let html='<div class="hero-on"><div class="hero-head"><span class="flag">🎯 ENTRAR</span>'
       +`<span class="n">${hits.length>1?'melhor de '+hits.length+' padrões':'1 padrão'}</span></div>`;
     html+=`<div class="entry best"><div class="entry-top"><span class="badge">${best.s}</span>`
       +`${hits.length>1?'<span class="ribbon">★ SUBSTITUI AS OUTRAS</span>':''}`
-      +`<span class="rate" style="color:${rcol(best.rate)}">${rtxt}</span></div>`
-      +`<div class="bet">${best.bet}<span class="why">${best.why}</span></div><div class="nums">`
+      +`<span class="rate">${best.tot?best.hit+'/'+best.tot:'sem histórico'}</span></div>`
+      +`<div class="bet">${best.bet}<span class="why">${best.why}</span></div>`
+      +stages(best)
+      +`<div class="nums">`
       +best.nums.map(n=>`<div class="chip ${color(n)}">${n}</div>`).join('')+'</div></div>';
     if(hits.length>1){
       html+='<div class="altlbl">outras entradas — só se preferir</div><div class="alts">';
       hits.slice(1).forEach(h=>{
         html+=`<div class="alt"><span class="badge">${h.s}</span>`
           +`<span class="altbet">${h.bet}</span>`
-          +`<span class="altrate" style="color:${rcol(h.rate)}">${h.rate==null?'novo':Math.round(h.rate*100)+'%'}</span></div>`;
+          +`<span class="altrate" style="color:${rcol(h.pG2)}">${h.pG2==null?'novo':'G2 '+Math.round(h.pG2*100)+'%'}</span></div>`;
       });
       html+='</div>';
     }
@@ -313,16 +335,21 @@ function render(){
 
   // placar
   const pc=document.getElementById('placar');pc.innerHTML='';
+  const rc2=r=>r==null?'var(--muted)':(r>=.6?'var(--ok)':r>=.4?'var(--warn)':'var(--bad)');
+  const pc3=p=>p==null?'—':Math.round(p*100)+'%';
   STRATS.forEach(([nm,rule])=>{
-    const s=st[nm],on=EN.has(nm),rate=s.tot?s.hit/s.tot:null;
-    const pct=rate==null?0:Math.round(rate*100);
-    const col=rate==null?'#2a3744':(rate>=.6?'var(--ok)':rate>=.4?'var(--warn)':'var(--bad)');
+    const s=st[nm],on=EN.has(nm);
+    const pE=s.tot?s.e/s.tot:null, pG1=s.tot?(s.e+s.g1)/s.tot:null, pG2=s.tot?(s.e+s.g1+s.g2)/s.tot:null;
+    const dim=on?1:.4;
     const row=document.createElement('div');row.className='srow';
-    row.innerHTML=`<label class="sw"><input type="checkbox" ${on?'checked':''} data-s="${nm}">`
+    row.innerHTML=`<div class="shead" style="opacity:${dim}"><label class="sw"><input type="checkbox" ${on?'checked':''} data-s="${nm}">`
       +`<span class="track"></span><span class="knob"></span></label>`
-      +`<span class="sname${on?'':' off'}">${nm}</span>`
-      +`<span class="bar"><span style="width:${pct}%;background:${col}"></span></span>`
-      +`<span class="sstat" style="color:${on?col:'var(--muted)'}" title="entrada ${s.e} · gale1 ${s.g1} · gale2 ${s.g2}">${s.tot?pct+'% · '+s.hit+'/'+s.tot:'—'}</span>`;
+      +`<span class="sname">${nm}</span>`
+      +`<span class="stot">${s.tot?s.hit+'/'+s.tot:'sem dados'}</span></div>`
+      +`<div class="stages small" style="opacity:${dim}">`
+      +`<div class="stg"><span>na hora</span><b style="color:${rc2(pE)}">${pc3(pE)}</b></div>`
+      +`<div class="stg"><span>até G1</span><b style="color:${rc2(pG1)}">${pc3(pG1)}</b></div>`
+      +`<div class="stg"><span>até G2</span><b style="color:${rc2(pG2)}">${pc3(pG2)}</b></div></div>`;
     pc.appendChild(row);
   });
   document.querySelectorAll('#placar input').forEach(i=>i.addEventListener('change',e=>{
